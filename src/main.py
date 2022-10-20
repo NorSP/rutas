@@ -8,8 +8,13 @@ from flask_swagger import swagger
 from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
-from models import db, User, Planets, Favorite
+from models import db, User, Planets, Favorite  
 #from models import Person
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -19,6 +24,54 @@ MIGRATE = Migrate(app, db)
 db.init_app(app)
 CORS(app)
 setup_admin(app)
+
+
+
+# Setup the Flask-JWT-Extended extension
+app.config["JWT_SECRET_KEY"] = "super-secret"  # Change this!
+jwt = JWTManager(app)
+
+# Create a route to authenticate your users and return JWTs. The
+# create_access_token() function is used to actually generate the JWT.
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.json.get("email", None) #Formas de recibir el front
+    password = request.json.get("password", None) #Formas de recibir el front
+    login_user = User.query.filter_by(email=email).first()
+    if login_user is None:
+        return jsonify({"msg": "User don't exist"}), 404
+    elif email != login_user.email or password != login_user.password:
+        return jsonify({"msg": "Bad email or password"}), 401
+#crea el acceso y devuelve un token a las personas al loguearse
+    access_token = create_access_token(identity=email)
+    response_body={
+        "access_token":access_token,
+        "user":login_user.serialize()
+        
+    }
+    return jsonify(response_body)
+
+# Protect a route with jwt_required, which will kick out requests
+# without a valid JWT present.
+@app.route("/profile", methods=["GET"])
+@jwt_required() #portero de la ruta 
+def protected():
+    # Access the identity of the current user with get_jwt_identity
+    current_user = get_jwt_identity()
+    login_user = User.query.filter_by(email=current_user).first()
+    if login_user is None:
+        return jsonify({"msg": "User don't exist"}), 404
+    response_body={
+        
+        "user":login_user.serialize()
+        
+    }
+    return jsonify(response_body), 200
+
+
+
 
 # Handle/serialize errors like a JSON object
 @app.errorhandler(APIException)
